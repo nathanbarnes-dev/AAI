@@ -1,0 +1,97 @@
+=== Starting Simple Model Testing ===
+Date/Time: 2025-04-28 13:45:44
+Loading data from Synthetic_Data_For_Students.csv
+Loaded dataset with 5000 rows and 36 columns
+Removing 106 rows with missing SettlementValue
+No entries with 'No_Other side drove on wrong side of the road' were found
+Train set size: 3915, Test set size: 979
+
+--- Testing Linear Regression ---
+Results for Linear Regression:
+  MSE: 130024.89
+  RMSE: 360.59
+  MAE: 240.25
+  R² Score: 0.8280
+  Training time: 0.24 seconds
+
+--- Testing Ridge Regression ---
+Results for Ridge Regression:
+  MSE: 113875.55
+  RMSE: 337.45
+  MAE: 211.27
+  R² Score: 0.8494
+  Training time: 0.12 seconds
+
+--- Testing Lasso Regression ---
+Results for Lasso Regression:
+  MSE: 138681.31
+  RMSE: 372.40
+  MAE: 223.29
+  R² Score: 0.8165
+  Training time: 31.00 seconds
+
+--- Testing Random Forest ---
+Results for Random Forest:
+  MSE: 71791.15
+  RMSE: 267.94
+  MAE: 124.44
+  R² Score: 0.9050
+  Training time: 36.53 seconds
+
+--- Testing Gradient Boosting ---
+Results for Gradient Boosting:
+  MSE: 90273.18
+  RMSE: 300.45
+  MAE: 187.54
+  R² Score: 0.8806
+  Training time: 3.99 seconds
+
+--- Testing XGBoost ---
+Results for XGBoost:
+  MSE: 57425.63
+  RMSE: 239.64
+  MAE: 138.83
+  R² Score: 0.9240
+  Training time: 0.46 seconds
+
+--- Testing Tuned XGBoost ---
+Results for Tuned XGBoost:
+  MSE: 59918.71
+  RMSE: 244.78
+  MAE: 144.46
+  R² Score: 0.9207
+  Training time: 0.61 seconds
+
+--- Testing Voting Ensemble ---
+Results for Voting Ensemble:
+  MSE: 64671.90
+  RMSE: 254.31
+  MAE: 145.04
+  R² Score: 0.9144
+  Training time: 40.84 seconds
+
+--- Testing Stacking Ensemble ---
+Results for Stacking Ensemble:
+  MSE: 52880.73
+  RMSE: 229.96
+  MAE: 128.57
+  R² Score: 0.9300
+  Training time: 209.18 seconds
+
+Model Performance Metrics:
+            Model           MSE       RMSE        MAE  R² Score  Training Time (s)
+Stacking Ensemble  52880.730216 229.958105 128.566847  0.930043         209.183555
+          XGBoost  57425.633239 239.636461 138.830618  0.924031           0.460000
+    Tuned XGBoost  59918.712484 244.782991 144.459975  0.920733           0.605998
+  Voting Ensemble  64671.902931 254.306710 145.042298  0.914445          40.835622
+    Random Forest  71791.148609 267.938703 124.441007  0.905027          36.527294
+Gradient Boosting  90273.176453 300.454949 187.542087  0.880576           3.990986
+ Ridge Regression 113875.547395 337.454512 211.273202  0.849353           0.119550
+Linear Regression 130024.889226 360.589641 240.249588  0.827988           0.242215
+ Lasso Regression 138681.314198 372.399401 223.290624  0.816537          30.997384
+
+Comparison table saved to test_results/model_comparison.csv
+
+Total execution time: 323.03 seconds (5.38 minutes)
+
+Testing complete!
