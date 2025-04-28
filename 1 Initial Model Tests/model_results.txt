@@ -1,0 +1,55 @@
+INSURANCE SETTLEMENT PREDICTION MODEL RESULTS
+===========================================
+
+Date and time: 2025-04-28 09:52:24
+
+MODEL PERFORMANCE METRICS:
+            Model       RMSE        MAE  R² Score
+          XGBoost 239.636461 138.830618  0.924031
+    Random Forest 267.938703 124.441007  0.905027
+Gradient Boosting 300.454949 187.542087  0.880576
+ Lasso Regression 335.683611 192.796115  0.850930
+ Ridge Regression 337.454512 211.273202  0.849353
+Linear Regression 360.589641 240.249588  0.827988
+
+BEST MODEL: XGBoost
+R² Score: 0.9240
+RMSE: 239.64
+
+MODEL DETAILS:
+
+Linear Regression:
+  MSE: 130024.89
+  RMSE: 360.59
+  MAE: 240.25
+  R² Score: 0.8280
+
+Ridge Regression:
+  MSE: 113875.55
+  RMSE: 337.45
+  MAE: 211.27
+  R² Score: 0.8494
+
+Lasso Regression:
+  MSE: 112683.49
+  RMSE: 335.68
+  MAE: 192.80
+  R² Score: 0.8509
+
+Random Forest:
+  MSE: 71791.15
+  RMSE: 267.94
+  MAE: 124.44
+  R² Score: 0.9050
+
+Gradient Boosting:
+  MSE: 90273.18
+  RMSE: 300.45
+  MAE: 187.54
+  R² Score: 0.8806
+
+XGBoost:
+  MSE: 57425.63
+  RMSE: 239.64
+  MAE: 138.83
+  R² Score: 0.9240

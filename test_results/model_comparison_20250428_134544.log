@@ -1,0 +1,25 @@
+=== Starting Simple Model Testing ===
+Date/Time: 2025-04-28 13:45:44
+Loading data from Synthetic_Data_For_Students.csv
+Loaded dataset with 5000 rows and 36 columns
+Removing 106 rows with missing SettlementValue
+No entries with 'No_Other side drove on wrong side of the road' were found
+Train set size: 3915, Test set size: 979
+
+--- Testing Linear Regression ---
+Results for Linear Regression:
+  MSE: 130024.89
+  RMSE: 360.59
+  MAE: 240.25
+  R² Score: 0.8280
+  Training time: 0.24 seconds
+
+--- Testing Ridge Regression ---
+Results for Ridge Regression:
+  MSE: 113875.55
+  RMSE: 337.45
+  MAE: 211.27
+  R² Score: 0.8494
+  Training time: 0.12 seconds
+
+--- Testing Lasso Regression ---

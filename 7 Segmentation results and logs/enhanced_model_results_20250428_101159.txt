@@ -1,0 +1,217 @@
+======= STARTING ENHANCED MODEL BUILDING PROCESS =======
+Date/Time: 2025-04-28 10:11:59
+Dataset loaded with 5000 rows and 36 columns
+
+--- Handling Missing Values and Outliers ---
+Missing values in SettlementValue: 106
+Removing 106 rows with missing SettlementValue
+Shape after removing infinity values from target: (4894, 36)
+Shape after removing extreme outliers from target: (4889, 36)
+
+--- Adding Engineered Features ---
+Could not calculate days between dates
+Added 16 engineered features
+
+Building baseline model on entire dataset (n=4889)
+
+Building model for segment: Baseline (n=4889)
+Segment model performance:
+  RMSE: 201.40, MAE: 117.29, R2: 0.9415
+
+--- Creating Multi-level Segmentation (Exceptional_Circumstances + AccidentType) ---
+Created segment 'No_Rear end' with 2303 rows
+Created segment 'No_Other side pulled out of side road' with 525 rows
+Created segment 'No_Rear end - Clt pushed into next vehicle' with 224 rows
+Created segment 'No_Other side pulled on to roundabout' with 67 rows
+Created segment 'No_Unknown' with 95 rows
+Created segment 'No_Other side reversed into Clt's vehicle' with 94 rows
+Created segment 'No_Other side changed lanes and collided with clt's vehicle' with 176 rows
+Created segment 'No_Other' with 300 rows
+Created segment 'No_Other side turned across Clt's path' with 245 rows
+Created segment 'No_Other side drove on wrong side of the road' with 84 rows
+Created segment 'No_Other side changed lanes on a roundabout colliding with clt's vehicle' with 78 rows
+Created segment 'No_Rear end - 3 car - Clt at front' with 135 rows
+Created segment 'No_Other side reversed into clt's stationary vehicle' with 61 rows
+Created segment 'Yes_Rear end' with 151 rows
+Created segment 'Unknown' with 97 rows
+Created 'Other' segment with 254 rows
+Created a total of 16 segments
+
+Building model for segment: No_Rear end (n=2303)
+Selecting features for segment: No_Rear end
+Selected 3 features out of 33
+Tuning hyperparameters for segment: No_Rear end
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.1, 'max_depth': 7, 'min_child_weight': 3, 'n_estimators': 200, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 123.64, MAE: 57.63, R2: 0.9749
+
+Building model for segment: No_Other side pulled out of side road (n=525)
+Selecting features for segment: No_Other side pulled out of side road
+Selected 3 features out of 33
+Tuning hyperparameters for segment: No_Other side pulled out of side road
+Best hyperparameters: {'colsample_bytree': 0.8, 'learning_rate': 0.1, 'max_depth': 5, 'min_child_weight': 1, 'n_estimators': 200, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 115.31, MAE: 49.55, R2: 0.9834
+
+Building model for segment: No_Rear end - Clt pushed into next vehicle (n=224)
+Selecting features for segment: No_Rear end - Clt pushed into next vehicle
+Selected 6 features out of 33
+Tuning hyperparameters for segment: No_Rear end - Clt pushed into next vehicle
+Best hyperparameters: {'colsample_bytree': 0.8, 'learning_rate': 0.1, 'max_depth': 3, 'min_child_weight': 1, 'n_estimators': 200, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 31.49, MAE: 18.48, R2: 0.9983
+
+Building model for segment: No_Other side pulled on to roundabout (n=67)
+Selecting features for segment: No_Other side pulled on to roundabout
+Selected 4 features out of 33
+Tuning hyperparameters for segment: No_Other side pulled on to roundabout
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.05, 'max_depth': 3, 'min_child_weight': 1, 'n_estimators': 200, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 50.16, MAE: 17.48, R2: 0.9976
+
+Building model for segment: No_Unknown (n=95)
+Selecting features for segment: No_Unknown
+Selected 4 features out of 33
+Tuning hyperparameters for segment: No_Unknown
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.05, 'max_depth': 3, 'min_child_weight': 1, 'n_estimators': 100, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 169.64, MAE: 111.19, R2: 0.9693
+
+Building model for segment: No_Other side reversed into Clt's vehicle (n=94)
+Selecting features for segment: No_Other side reversed into Clt's vehicle
+Selected 2 features out of 33
+Tuning hyperparameters for segment: No_Other side reversed into Clt's vehicle
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.05, 'max_depth': 3, 'min_child_weight': 1, 'n_estimators': 200, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 38.77, MAE: 26.39, R2: 0.9985
+
+Building model for segment: No_Other side changed lanes and collided with clt's vehicle (n=176)
+Selecting features for segment: No_Other side changed lanes and collided with clt's vehicle
+Selected 5 features out of 33
+Tuning hyperparameters for segment: No_Other side changed lanes and collided with clt's vehicle
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.1, 'max_depth': 5, 'min_child_weight': 1, 'n_estimators': 100, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 23.33, MAE: 13.68, R2: 0.9989
+
+Building model for segment: No_Other (n=300)
+Selecting features for segment: No_Other
+Selected 3 features out of 33
+Tuning hyperparameters for segment: No_Other
+Best hyperparameters: {'colsample_bytree': 0.8, 'learning_rate': 0.1, 'max_depth': 7, 'min_child_weight': 3, 'n_estimators': 200, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 102.30, MAE: 25.85, R2: 0.9884
+
+Building model for segment: No_Other side turned across Clt's path (n=245)
+Selecting features for segment: No_Other side turned across Clt's path
+Selected 5 features out of 33
+Tuning hyperparameters for segment: No_Other side turned across Clt's path
+Best hyperparameters: {'colsample_bytree': 0.8, 'learning_rate': 0.05, 'max_depth': 7, 'min_child_weight': 3, 'n_estimators': 100, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 154.58, MAE: 66.43, R2: 0.9653
+
+Building model for segment: No_Other side drove on wrong side of the road (n=84)
+Selecting features for segment: No_Other side drove on wrong side of the road
+Selected 5 features out of 33
+Tuning hyperparameters for segment: No_Other side drove on wrong side of the road
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.1, 'max_depth': 7, 'min_child_weight': 3, 'n_estimators': 200, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 15.31, MAE: 5.42, R2: 0.9997
+
+Building model for segment: No_Other side changed lanes on a roundabout colliding with clt's vehicle (n=78)
+Selecting features for segment: No_Other side changed lanes on a roundabout colliding with clt's vehicle
+Selected 3 features out of 33
+Tuning hyperparameters for segment: No_Other side changed lanes on a roundabout colliding with clt's vehicle
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.1, 'max_depth': 7, 'min_child_weight': 1, 'n_estimators': 100, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 10.11, MAE: 2.12, R2: 0.9998
+
+Building model for segment: No_Rear end - 3 car - Clt at front (n=135)
+Selecting features for segment: No_Rear end - 3 car - Clt at front
+Selected 3 features out of 33
+Tuning hyperparameters for segment: No_Rear end - 3 car - Clt at front
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.1, 'max_depth': 7, 'min_child_weight': 3, 'n_estimators': 200, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 2.65, MAE: 1.23, R2: 1.0000
+
+Building model for segment: No_Other side reversed into clt's stationary vehicle (n=61)
+Selecting features for segment: No_Other side reversed into clt's stationary vehicle
+Selected 3 features out of 33
+Tuning hyperparameters for segment: No_Other side reversed into clt's stationary vehicle
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.1, 'max_depth': 3, 'min_child_weight': 1, 'n_estimators': 200, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 0.30, MAE: 0.19, R2: 1.0000
+
+Building model for segment: Yes_Rear end (n=151)
+Selecting features for segment: Yes_Rear end
+Selected 7 features out of 33
+Tuning hyperparameters for segment: Yes_Rear end
+Best hyperparameters: {'colsample_bytree': 0.8, 'learning_rate': 0.05, 'max_depth': 7, 'min_child_weight': 1, 'n_estimators': 100, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 39.50, MAE: 23.67, R2: 0.9976
+
+Building model for segment: Unknown (n=97)
+Selecting features for segment: Unknown
+Selected 5 features out of 33
+Tuning hyperparameters for segment: Unknown
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.05, 'max_depth': 3, 'min_child_weight': 3, 'n_estimators': 100, 'subsample': 1.0}
+Segment model performance:
+  RMSE: 212.92, MAE: 133.86, R2: 0.9388
+
+Building model for segment: Other (n=254)
+Selecting features for segment: Other
+Selected 3 features out of 33
+Tuning hyperparameters for segment: Other
+Best hyperparameters: {'colsample_bytree': 1.0, 'learning_rate': 0.1, 'max_depth': 7, 'min_child_weight': 3, 'n_estimators': 200, 'subsample': 0.8}
+Segment model performance:
+  RMSE: 51.52, MAE: 17.87, R2: 0.9957
+
+Creating meta-features for stacking ensemble
+
+Building stacked ensemble model
+X_meta shape: (4889, 69), y_meta shape: (4889,)
+Stacked ensemble performance:
+  RMSE: 109.79, MAE: 49.48, R2: 0.9833
+
+Model Comparison:
+        Baseline  Segmented (Weighted)  Stacked Ensemble
+RMSE  201.402158            100.282634        109.785165
+MAE   117.292575             46.110790         49.475396
+R2      0.941529              0.981656          0.983316
+
+Improvements over Baseline:
+                  Model  R2 Score  Improvement (%)
+0  Segmented (Weighted)  0.981656         4.261817
+1      Stacked Ensemble  0.983316         4.438175
+
+Performance by Segment:
+                                                                     Segment        R2        RMSE  Size
+12                      No_Other side reversed into clt's stationary vehicle  1.000000    0.296350    61
+11                                        No_Rear end - 3 car - Clt at front  0.999991    2.649406   135
+10  No_Other side changed lanes on a roundabout colliding with clt's vehicle  0.999770   10.108482    78
+9                              No_Other side drove on wrong side of the road  0.999713   15.312773    84
+6                No_Other side changed lanes and collided with clt's vehicle  0.998908   23.327114   176
+5                                  No_Other side reversed into Clt's vehicle  0.998481   38.768776    94
+2                                 No_Rear end - Clt pushed into next vehicle  0.998297   31.488722   224
+3                                      No_Other side pulled on to roundabout  0.997612   50.156478    67
+13                                                              Yes_Rear end  0.997553   39.498019   151
+15                                                                     Other  0.995740   51.519974   254
+7                                                                   No_Other  0.988350  102.303539   300
+1                                      No_Other side pulled out of side road  0.983380  115.310730   525
+0                                                                No_Rear end  0.974927  123.641155  2303
+4                                                                 No_Unknown  0.969290  169.640275    95
+8                                     No_Other side turned across Clt's path  0.965330  154.584192   245
+14                                                                   Unknown  0.938761  212.922867    97
+
+All models and results saved to output directory
+
+==================================================
+MODEL BUILDING COMPLETE
+==================================================
+
+Best model: Stacked Ensemble
+R² Score: 0.9833
+Improvement over baseline: 4.44%
+
+Execution time: 66.72 seconds (1.11 minutes)
+
+======= MODEL BUILDING PROCESS FINISHED =======
