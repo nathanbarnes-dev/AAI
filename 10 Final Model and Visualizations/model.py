@@ -1,589 +1,596 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import joblib
 import os
-import sys
-from pathlib import Path
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+import time
+import joblib
+from datetime import datetime
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.feature_selection import SelectFromModel
+from sklearn.ensemble import StackingRegressor, RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import ElasticNet
+from xgboost import XGBRegressor
+import warnings
+warnings.filterwarnings('ignore')
 
-# Add necessary paths to import the UnifiedSegmentedModel class
-current_dir = Path(__file__).parent
-model_paths = list(current_dir.glob("**/model.py"))
-if model_paths:
-    sys.path.append(str(model_paths[0].parent))
-else:
-    sys.path.append('./9 final model')  # Assume model.py is in this directory
-
-try:
-    from model import UnifiedSegmentedModel
-    print("Successfully imported UnifiedSegmentedModel class")
-except ImportError as e:
-    print(f"Error importing UnifiedSegmentedModel: {e}")
-    print("Please ensure model.py is in the current directory or in '9 final model' subdirectory")
-    sys.exit(1)
-
-# Create output directory for visualizations
-os.makedirs('model_visualizations', exist_ok=True)
-
-def load_model_and_data():
-    """
-    Load the trained model and data
-    
-    Returns:
-        tuple: (model, full_data)
-    """
-    # Try to find the model file
-    model_path = 'unified_segmented_model.pkl'
-    if not os.path.exists(model_path):
-        # Look for the model in different locations
-        for potential_path in [
-            './9 final model/unified_segmented_model.pkl',
-            './unified_models/unified_segmented_model.pkl',
-            './output/unified_segmented_model.pkl'
-        ]:
-            if os.path.exists(potential_path):
-                model_path = potential_path
-                break
-    
-    try:
-        model = UnifiedSegmentedModel.load(model_path)
-        print(f"Model loaded successfully from {model_path}")
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        return None, None
-    
-    # Try to find the data file
-    data_path = 'Synthetic_Data_For_Students.csv'
-    if not os.path.exists(data_path):
-        # Look for the data file in different locations
-        for potential_path in [
-            './Synthetic_Data_For_Students.csv', 
-            '../Synthetic_Data_For_Students.csv'
-        ]:
-            if os.path.exists(potential_path):
-                data_path = potential_path
-                break
-    
-    try:
-        df = pd.read_csv(data_path)
-        print(f"Data loaded successfully from {data_path}")
-        return model, df
-    except Exception as e:
-        print(f"Error loading data: {e}")
-        return model, None
-
-def visualize_model_architecture(model):
-    """
-    Create a visualization showing the model's architecture
-    
-    Args:
-        model: Trained UnifiedSegmentedModel
-    """
-    print("\nCreating model architecture visualization...")
-    
-    # Get segment information
-    segments = list(model.segment_models.keys())
-    num_segments = len(segments)
-    
-    # Get key stats for each segment
-    segment_stats = []
-    for segment_name, model_info in model.segment_models.items():
-        segment_stats.append({
-            'name': segment_name,
-            'features': len(model_info['features']),
-            'r2': model_info['metrics']['r2'],
-            'size': model_info.get('size', 0)
-        })
-    
-    # Sort by size
-    segment_stats = sorted(segment_stats, key=lambda x: x['size'], reverse=True)
-    
-    # Create visualization
-    plt.figure(figsize=(14, 8))
-    
-    # Plot segment sizes
-    plt.subplot(2, 2, 1)
-    bars = plt.bar([s['name'][:15] + '...' if len(s['name']) > 15 else s['name'] for s in segment_stats], 
-            [s['size'] for s in segment_stats])
-    plt.title('Segment Sizes')
-    plt.xticks(rotation=90)
-    plt.ylabel('Number of Records')
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Plot segment feature counts
-    plt.subplot(2, 2, 2)
-    plt.bar([s['name'][:15] + '...' if len(s['name']) > 15 else s['name'] for s in segment_stats], 
-            [s['features'] for s in segment_stats])
-    plt.title('Features Used by Each Segment')
-    plt.xticks(rotation=90)
-    plt.ylabel('Number of Features')
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Plot segment R² scores
-    plt.subplot(2, 2, 3)
-    bars = plt.bar([s['name'][:15] + '...' if len(s['name']) > 15 else s['name'] for s in segment_stats], 
-            [s['r2'] for s in segment_stats])
-    plt.title('R² Scores for Each Segment Model')
-    plt.xticks(rotation=90)
-    plt.ylabel('R² Score')
-    plt.ylim(0, 1)  # R² is typically between 0 and 1
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Create diagram of the unified model architecture
-    plt.subplot(2, 2, 4)
-    plt.axis('off')
-    
-    # Create a simple diagram showing the architecture
-    text = "UnifiedSegmentedModel Architecture:\n\n"
-    text += f"Input Data → Preprocessing → Feature Engineering\n\n"
-    text += f"↓\n\n"
-    text += f"Segment Assignment ({len(segments)} segments)\n\n"
-    text += f"↓\n\n"
-    text += f"Segment-Specific Models\n"
-    text += f"(XGBoost with custom features for each segment)\n\n"
-    text += f"↓\n\n"
-    text += f"Meta-Learner\n"
-    text += f"(Combines segment predictions)\n\n"
-    text += f"↓\n\n"
-    text += f"Final Prediction"
-    
-    plt.text(0.5, 0.5, text, ha='center', va='center', fontsize=12, 
-             bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.5))
-    
-    plt.tight_layout()
-    plt.savefig('model_visualizations/model_architecture.png', dpi=300)
-    plt.close()
-    
-    print("Model architecture visualization saved.")
-
-def visualize_segment_distribution(model, data):
-    """
-    Visualize how data is distributed across segments
-    
-    Args:
-        model: Trained UnifiedSegmentedModel
-        data: Full dataset
-    """
-    print("\nVisualizing segment distribution...")
-    
-    # Preprocess data
-    preprocessed_data = model._preprocess_data(data)
-    
-    # Engineer features
-    engineered_data = model._engineer_features(preprocessed_data)
-    
-    # Assign segments
-    engineered_data['segment'] = engineered_data.apply(model._get_segment_for_record, axis=1)
-    
-    # Count segments
-    segment_counts = engineered_data['segment'].value_counts()
-    
-    # Calculate percentage
-    segment_percentages = segment_counts / segment_counts.sum() * 100
-    
-    # Create figure
-    plt.figure(figsize=(14, 10))
-    
-    # Plot segment counts
-    plt.subplot(2, 1, 1)
-    bars = plt.bar(segment_counts.index, segment_counts.values)
-    
-    # Add value labels
-    for bar in bars:
-        height = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                f'{int(height)}', ha='center', va='bottom', rotation=0)
-    
-    plt.title('Distribution of Records Across Segments')
-    plt.xlabel('Segment')
-    plt.ylabel('Number of Records')
-    plt.xticks(rotation=90)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Plot segment percentages
-    plt.subplot(2, 1, 2)
-    plt.pie(segment_percentages, labels=segment_percentages.index, autopct='%1.1f%%', 
-            startangle=90, textprops={'fontsize': 8})
-    plt.title('Percentage of Records in Each Segment')
-    plt.axis('equal')
-    
-    plt.tight_layout()
-    plt.savefig('model_visualizations/segment_distribution.png', dpi=300)
-    plt.close()
-    
-    # Check if there's a dominant segment
-    max_segment = segment_counts.idxmax()
-    max_percentage = segment_percentages.max()
-    
-    if max_percentage > 50:
-        print(f"Warning: Dominant segment '{max_segment}' contains {max_percentage:.1f}% of all records.")
-    
-    print("Segment distribution visualization saved.")
-    
-    # Return engineered data with segments
-    return engineered_data
-
-def visualize_feature_importance_by_segment(model):
-    """
-    Create heatmap showing which features are important across segments
-    
-    Args:
-        model: Trained UnifiedSegmentedModel
-    """
-    print("\nVisualizing feature importance by segment...")
-    
-    # Collect feature importances for each segment
-    all_features = set()
-    segment_importances = {}
-    
-    for segment_name, model_info in model.segment_models.items():
-        segment_model = model_info['model']
-        segment_features = model_info['features']
+class UnifiedSegmentedModel:
+    def __init__(self, segmentation_cols=['Exceptional_Circumstances', 'AccidentType'], 
+                 min_segment_size=50, use_feature_selection=True, verbose=True):
+        self.segmentation_cols = segmentation_cols
+        self.min_segment_size = min_segment_size
+        self.use_feature_selection = use_feature_selection
+        self.verbose = verbose
         
-        # Get feature importances if available
-        try:
-            if hasattr(segment_model, 'feature_importances_'):
-                importances = dict(zip(segment_features, segment_model.feature_importances_))
-                segment_importances[segment_name] = importances
-                all_features.update(segment_features)
-            elif hasattr(segment_model, 'get_booster'):
-                # XGBoost model
-                importance_scores = segment_model.get_booster().get_score(importance_type='gain')
-                # Map feature indices to names (this might need adjustment)
-                importances = {}
-                for i, feature in enumerate(segment_features):
-                    # XGBoost uses feature indices in importance dict
-                    feature_key = f"f{i}"
-                    if feature_key in importance_scores:
-                        importances[feature] = importance_scores[feature_key]
-                    else:
-                        importances[feature] = 0
-                segment_importances[segment_name] = importances
-                all_features.update(segment_features)
-        except Exception as e:
-            print(f"Could not get importance for segment {segment_name}: {str(e)}")
-    
-    if not segment_importances:
-        print("Could not extract feature importances from segment models.")
-        return
-    
-    # Create a DataFrame for heatmap
-    all_features = sorted(list(all_features))
-    all_segments = list(segment_importances.keys())
-    
-    importance_matrix = np.zeros((len(all_segments), len(all_features)))
-    
-    for i, segment in enumerate(all_segments):
-        for j, feature in enumerate(all_features):
-            importance_matrix[i, j] = segment_importances[segment].get(feature, 0)
-    
-    # Normalize by row (segment)
-    for i in range(len(all_segments)):
-        row_max = importance_matrix[i].max()
-        if row_max > 0:
-            importance_matrix[i] = importance_matrix[i] / row_max
-    
-    # Create heatmap
-    plt.figure(figsize=(14, 10))
-    sns.heatmap(importance_matrix, cmap='viridis', yticklabels=all_segments, xticklabels=all_features)
-    plt.title('Feature Importance Across Segments (Normalized)')
-    plt.xlabel('Features')
-    plt.ylabel('Segments')
-    plt.xticks(rotation=90)
-    plt.tight_layout()
-    plt.savefig('model_visualizations/feature_importance_heatmap.png', dpi=300)
-    plt.close()
-    
-    # Create a summary of top features per segment
-    top_features = {}
-    for segment, importances in segment_importances.items():
-        sorted_importances = sorted(importances.items(), key=lambda x: x[1], reverse=True)
-        top_features[segment] = [f[0] for f in sorted_importances[:5]]  # Top 5 features
-    
-    # Create a bar chart showing the most common important features
-    feature_frequency = {}
-    for segment_top_features in top_features.values():
-        for feature in segment_top_features:
-            feature_frequency[feature] = feature_frequency.get(feature, 0) + 1
-    
-    feature_frequency = dict(sorted(feature_frequency.items(), key=lambda x: x[1], reverse=True))
-    
-    plt.figure(figsize=(12, 6))
-    bars = plt.bar(list(feature_frequency.keys()), list(feature_frequency.values()))
-    plt.title('Most Common Important Features Across Segments')
-    plt.xlabel('Feature')
-    plt.ylabel('Number of Segments')
-    plt.xticks(rotation=90)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.tight_layout()
-    plt.savefig('model_visualizations/common_important_features.png', dpi=300)
-    plt.close()
-    
-    print("Feature importance visualizations saved.")
-
-def visualize_error_analysis(model, data):
-    """
-    Visualize model errors by segment
-    
-    Args:
-        model: Trained UnifiedSegmentedModel
-        data: Full dataset with assigned segments
-    """
-    print("\nPerforming error analysis by segment...")
-    
-    # Only use data with actual settlement values
-    data = data.dropna(subset=['SettlementValue']).copy()
-    
-    # Split into train and test for consistent evaluation
-    train_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
-    
-    # Get predictions for test data
-    try:
-        test_predictions = model.predict(test_data)
+        self.segments = {}
+        self.segment_models = {}
+        self.meta_model = None
+        self.feature_columns = None
+        self.required_columns = []
+        self.is_trained = False
+        self.fallback_mean = None
         
-        # If predictions successful, add to dataframe
-        if len(test_predictions) == len(test_data):
-            test_data['prediction'] = test_predictions
-            test_data['error'] = test_data['prediction'] - test_data['SettlementValue']
-            test_data['abs_error'] = np.abs(test_data['error'])
-            test_data['percent_error'] = 100 * np.abs(test_data['error']) / test_data['SettlementValue']
-            
-            # Assign segments
-            test_data['segment'] = test_data.apply(model._get_segment_for_record, axis=1)
-            
-            # Calculate error metrics by segment
-            segment_metrics = {}
-            for segment in test_data['segment'].unique():
-                segment_data = test_data[test_data['segment'] == segment]
-                if len(segment_data) > 0:
-                    segment_metrics[segment] = {
-                        'count': len(segment_data),
-                        'mae': mean_absolute_error(segment_data['SettlementValue'], segment_data['prediction']),
-                        'mse': mean_squared_error(segment_data['SettlementValue'], segment_data['prediction']),
-                        'rmse': np.sqrt(mean_squared_error(segment_data['SettlementValue'], segment_data['prediction'])),
-                        'r2': r2_score(segment_data['SettlementValue'], segment_data['prediction']),
-                        'mean_percent_error': segment_data['percent_error'].mean()
-                    }
-            
-            # Convert to DataFrame for easier plotting
-            metrics_df = pd.DataFrame(segment_metrics).T
-            metrics_df = metrics_df.sort_values('count', ascending=False)
-            
-            # Plot error metrics by segment
-            plt.figure(figsize=(14, 10))
-            
-            # Plot MAE by segment
-            plt.subplot(2, 2, 1)
-            bars = plt.bar(metrics_df.index, metrics_df['mae'])
-            plt.title('Mean Absolute Error by Segment')
-            plt.xlabel('Segment')
-            plt.ylabel('MAE ($)')
-            plt.xticks(rotation=90)
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
-            
-            # Plot RMSE by segment
-            plt.subplot(2, 2, 2)
-            plt.bar(metrics_df.index, metrics_df['rmse'])
-            plt.title('Root Mean Squared Error by Segment')
-            plt.xlabel('Segment')
-            plt.ylabel('RMSE ($)')
-            plt.xticks(rotation=90)
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
-            
-            # Plot R² by segment
-            plt.subplot(2, 2, 3)
-            plt.bar(metrics_df.index, metrics_df['r2'])
-            plt.title('R² Score by Segment')
-            plt.xlabel('Segment')
-            plt.ylabel('R² Score')
-            plt.xticks(rotation=90)
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
-            
-            # Plot mean percent error by segment
-            plt.subplot(2, 2, 4)
-            plt.bar(metrics_df.index, metrics_df['mean_percent_error'])
-            plt.title('Mean Percentage Error by Segment')
-            plt.xlabel('Segment')
-            plt.ylabel('Mean % Error')
-            plt.xticks(rotation=90)
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
-            
-            plt.tight_layout()
-            plt.savefig('model_visualizations/error_analysis_by_segment.png', dpi=300)
-            plt.close()
-            
-            # Create error distribution plot
-            plt.figure(figsize=(14, 8))
-            
-            # Plot histogram of errors
-            plt.subplot(2, 2, 1)
-            plt.hist(test_data['error'], bins=30)
-            plt.title('Distribution of Errors')
-            plt.xlabel('Error ($)')
-            plt.ylabel('Frequency')
-            plt.grid(alpha=0.3)
-            
-            # Plot absolute errors against actual values
-            plt.subplot(2, 2, 2)
-            plt.scatter(test_data['SettlementValue'], test_data['abs_error'], alpha=0.5)
-            plt.title('Absolute Error vs. Actual Value')
-            plt.xlabel('Actual Settlement Value ($)')
-            plt.ylabel('Absolute Error ($)')
-            plt.grid(alpha=0.3)
-            
-            # Plot predicted vs actual
-            plt.subplot(2, 2, 3)
-            plt.scatter(test_data['SettlementValue'], test_data['prediction'], alpha=0.5)
-            plt.plot([test_data['SettlementValue'].min(), test_data['SettlementValue'].max()], 
-                     [test_data['SettlementValue'].min(), test_data['SettlementValue'].max()], 
-                     'r--')
-            plt.title('Predicted vs. Actual Values')
-            plt.xlabel('Actual Settlement Value ($)')
-            plt.ylabel('Predicted Settlement Value ($)')
-            plt.grid(alpha=0.3)
-            
-            # Plot box plot of errors by segment (for top 5 segments by count)
-            plt.subplot(2, 2, 4)
-            top_segments = metrics_df.index[:5]  # Top 5 segments by count
-            segment_errors = [test_data[test_data['segment'] == segment]['error'] for segment in top_segments]
-            plt.boxplot(segment_errors, labels=top_segments)
-            plt.title('Error Distribution by Top 5 Segments')
-            plt.xlabel('Segment')
-            plt.ylabel('Error ($)')
-            plt.xticks(rotation=90)
-            plt.grid(axis='y', alpha=0.3)
-            
-            plt.tight_layout()
-            plt.savefig('model_visualizations/error_distribution.png', dpi=300)
-            plt.close()
-            
-            print("Error analysis visualizations saved.")
-            
-            return test_data, metrics_df
+    def _log(self, message):
+        if self.verbose:
+            print(message)
+    
+    def _preprocess_data(self, df):
+        df = df.copy()
+        
+        # Store the fallback mean during training
+        if not self.is_trained and 'SettlementValue' in df.columns:
+            self.fallback_mean = df['SettlementValue'].mean()
+        
+        if 'SettlementValue' in df.columns and df['SettlementValue'].isna().any():
+            self._log("Handling missing values in target variable")
+            if self.is_trained:
+                self._log(f"Note: {df['SettlementValue'].isna().sum()} rows have missing target values")
+            else:
+                df = df.dropna(subset=['SettlementValue'])
+        
+        numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+        if 'SettlementValue' in numeric_cols:
+            numeric_cols = [col for col in numeric_cols if col != 'SettlementValue']
+        
+        for col in numeric_cols:
+            if df[col].isna().any():
+                df[col] = df[col].fillna(df[col].median())
+        
+        categorical_cols = df.select_dtypes(include=['object']).columns
+        for col in categorical_cols:
+            if df[col].isna().any():
+                df[col] = df[col].fillna('Unknown')
+        
+        return df
+    
+    def _engineer_features(self, df):
+        self._log("Engineering features")
+        df_new = df.copy()
+        
+        if 'Accident Date' in df.columns and 'Claim Date' in df.columns:
+            try:
+                df_new['Days_To_Claim'] = (pd.to_datetime(df_new['Claim Date']) - 
+                                          pd.to_datetime(df_new['Accident Date'])).dt.days
+            except:
+                # If dates can't be parsed, add a default value
+                df_new['Days_To_Claim'] = 0
+        
+        special_columns = [col for col in df.columns if col.startswith('Special')]
+        if len(special_columns) > 0:
+            df_new['Total_Special_Damages'] = df_new[special_columns].sum(axis=1)
+            df_new['Log_Special_Damages'] = np.log1p(df_new['Total_Special_Damages'])
+        
+        general_columns = [col for col in df.columns if col.startswith('General')]
+        if len(general_columns) > 0:
+            df_new['Total_General_Damages'] = df_new[general_columns].sum(axis=1)
+            df_new['Log_General_Damages'] = np.log1p(df_new['Total_General_Damages'])
+        
+        if 'Total_Special_Damages' in df_new.columns and 'Total_General_Damages' in df_new.columns:
+            df_new['Total_Damages'] = df_new['Total_Special_Damages'] + df_new['Total_General_Damages']
+            df_new['Log_Total_Damages'] = np.log1p(df_new['Total_Damages'])
+            # Avoid division by zero
+            df_new['Special_General_Ratio'] = df_new['Total_Special_Damages'] / df_new['Total_General_Damages'].replace(0, 1)
+        
+        for col in df_new.select_dtypes(include=['object']).columns:
+            if 'Injury' in col or 'injury' in col:
+                df_new['Severe_Injury_Flag'] = df_new[col].str.lower().str.contains('severe|major|critical', na=False).astype(int)
+                break
+        
+        if 'Whiplash' in df_new.columns:
+            df_new['Whiplash_Numeric'] = (df_new['Whiplash'] == 'Yes').astype(int)
+        
+        if 'Minor_Psychological_Injury' in df_new.columns:
+            df_new['Psych_Injury_Numeric'] = (df_new['Minor_Psychological_Injury'] == 'Yes').astype(int)
+        
+        if 'Severe_Injury_Flag' in df_new.columns and 'Total_Damages' in df_new.columns:
+            df_new['Severe_Injury_Damages'] = df_new['Severe_Injury_Flag'] * df_new['Total_Damages']
+        
+        if 'Psych_Injury_Numeric' in df_new.columns and 'Total_Damages' in df_new.columns:
+            df_new['Psych_Damage_Interaction'] = df_new['Psych_Injury_Numeric'] * df_new['Total_Damages']
+        
+        return df_new
+    
+    def _create_segments(self, df):
+        self._log(f"Creating segments based on {self.segmentation_cols}")
+        segments = {}
+        
+        # Store required columns during training
+        if not self.is_trained:
+            self.required_columns = list(df.columns)
+        
+        if len(self.segmentation_cols) == 1:
+            col = self.segmentation_cols[0]
+            for value in df[col].unique():
+                segment_df = df[df[col] == value]
+                if len(segment_df) >= self.min_segment_size:
+                    segments[f"{value}"] = segment_df
+        
         else:
-            print(f"Prediction length mismatch: got {len(test_predictions)}, expected {len(test_data)}")
-    except Exception as e:
-        print(f"Error making predictions: {str(e)}")
-    
-    return None, None
-
-def visualize_meta_model_contribution(model, test_data_with_segments):
-    """
-    Visualize how the meta-model contributes to final predictions
-    
-    Args:
-        model: Trained UnifiedSegmentedModel
-        test_data_with_segments: Test data with segment assignments and predictions
-    """
-    print("\nVisualizing meta-model contribution...")
-    
-    if test_data_with_segments is None or 'prediction' not in test_data_with_segments.columns:
-        print("Cannot analyze meta-model contribution without test predictions")
-        return
-    
-    # Sample a few records for detailed analysis
-    sampled_data = test_data_with_segments.sample(min(5, len(test_data_with_segments)), random_state=42)
-    
-    # Create a plot showing segment and meta-model predictions
-    plt.figure(figsize=(15, 10))
-    
-    for i, (idx, record) in enumerate(sampled_data.iterrows(), 1):
-        plt.subplot(len(sampled_data), 1, i)
+            df = df.copy()
+            df['_segment_id'] = ''
+            for col in self.segmentation_cols:
+                df['_segment_id'] += df[col].astype(str) + '_'
+            
+            for seg_id, segment_df in df.groupby('_segment_id'):
+                if len(segment_df) >= self.min_segment_size:
+                    segments[seg_id] = segment_df.drop('_segment_id', axis=1)
         
-        # Get the segment for this record
-        segment = record['segment']
+        all_segmented = pd.concat([segment_df for segment_df in segments.values()]) if segments else pd.DataFrame()
         
-        # Get meta features
+        if not all_segmented.empty:
+            other_records = df.loc[~df.index.isin(all_segmented.index)]
+            
+            if len(other_records) >= self.min_segment_size:
+                segments['Other'] = other_records
+            elif len(other_records) > 0 and segments:
+                # Add remaining records to the largest segment
+                largest_segment = max(segments.items(), key=lambda x: len(x[1]))
+                segments[largest_segment[0]] = pd.concat([largest_segment[1], other_records])
+        
+        self._log(f"Created {len(segments)} segments")
+        return segments
+    
+    def _get_segment_for_record(self, record):
+        """Determine which segment a single record belongs to"""
+        if len(self.segmentation_cols) == 1:
+            col = self.segmentation_cols[0]
+            if col in record:
+                value = record[col]
+                segment_id = f"{value}"
+                if segment_id in self.segments:
+                    return segment_id
+        
+        else:
+            segment_id = ''
+            all_cols_present = True
+            
+            for col in self.segmentation_cols:
+                if col not in record:
+                    all_cols_present = False
+                    break
+                segment_id += str(record[col]) + '_'
+            
+            if all_cols_present and segment_id in self.segments:
+                return segment_id
+        
+        return 'Other'
+    
+    def _select_features(self, X, y):
+        """Select the most important features for a segment"""
+        if X.shape[1] <= 5:
+            return X, X.columns.tolist()
+        
         try:
-            meta_features = model._create_meta_features(pd.DataFrame([record]))
+            feature_selector = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
+            feature_selector.fit(X, y)
             
-            # Try to add segment-specific predictions
-            segment_predictions = {}
-            for segment_name, model_info in model.segment_models.items():
-                segment_model = model_info['model']
-                segment_features = model_info['features']
+            selection_model = SelectFromModel(
+                feature_selector, 
+                threshold='mean',
+                prefit=True
+            )
+            
+            selected_indices = selection_model.get_support()
+            selected_features = X.columns[selected_indices].tolist()
+            
+            if len(selected_features) < 3:
+                # Ensure at least 3 features are selected
+                importances = feature_selector.feature_importances_
+                top_indices = np.argsort(importances)[-3:]
+                selected_features = X.columns[top_indices].tolist()
                 
-                # Check if we have all required features
-                missing_features = [f for f in segment_features if f not in record.index]
-                if not missing_features:
-                    try:
-                        X_segment = pd.DataFrame([record[segment_features]])
-                        pred = segment_model.predict(X_segment)[0]
-                        segment_predictions[segment_name] = pred
-                    except:
-                        pass
+            return X[selected_features], selected_features
+        except Exception as e:
+            self._log(f"Feature selection failed: {str(e)}")
+            # In case of error, return original features
+            return X, X.columns.tolist()
+    
+    def _train_segment_model(self, segment_df, segment_name):
+        """Train a model for a specific segment"""
+        self._log(f"Training model for segment: {segment_name} (n={len(segment_df)})")
+        
+        numeric_cols = segment_df.select_dtypes(include=['float64', 'int64']).columns
+        numeric_cols = [col for col in numeric_cols if col != 'SettlementValue']
+        
+        X = segment_df[numeric_cols].copy()
+        y = segment_df['SettlementValue']
+        
+        if self.use_feature_selection and X.shape[1] > 5:
+            try:
+                X_selected, selected_features = self._select_features(X, y)
+            except Exception as e:
+                self._log(f"Feature selection error: {str(e)}")
+                X_selected = X
+                selected_features = X.columns.tolist()
+        else:
+            X_selected = X
+            selected_features = X.columns.tolist()
+        
+        try:
+            model = XGBRegressor(
+                learning_rate=0.1,
+                max_depth=5,
+                n_estimators=150,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=42
+            )
             
-            # Sort segments by prediction value
-            sorted_segments = sorted(segment_predictions.items(), key=lambda x: x[1])
+            model.fit(X_selected, y)
             
-            # Plot segment predictions
-            segment_names = [s[0] for s in sorted_segments]
-            preds = [s[1] for s in sorted_segments]
+            y_pred = model.predict(X_selected)
+            rmse = np.sqrt(mean_squared_error(y, y_pred))
+            r2 = r2_score(y, y_pred)
             
-            bars = plt.barh(segment_names, preds, alpha=0.7)
+            self._log(f"  RMSE: {rmse:.2f}, R²: {r2:.4f}")
             
-            # Highlight the assigned segment
-            for j, bar in enumerate(bars):
-                if segment_names[j] == segment:
-                    bar.set_color('red')
-                    bar.set_alpha(1.0)
+            # Store the mean value for fallback
+            segment_mean = y.mean()
             
-            # Add the final prediction
-            plt.axvline(x=record['prediction'], color='green', linestyle='--', 
-                        linewidth=2, label='Final Prediction')
+            return {
+                'model': model,
+                'features': selected_features,
+                'metrics': {
+                    'rmse': rmse,
+                    'r2': r2
+                },
+                'size': len(segment_df),
+                'mean_value': segment_mean
+            }
+        except Exception as e:
+            self._log(f"Error training model for segment {segment_name}: {str(e)}")
+            # Return a placeholder with the mean value
+            return {
+                'model': None,
+                'features': [],
+                'metrics': {
+                    'rmse': float('inf'),
+                    'r2': 0
+                },
+                'size': len(segment_df),
+                'mean_value': y.mean()
+            }
+    
+    def _create_meta_features(self, df):
+        """Create meta-features for the stacking ensemble"""
+        self._log("Creating meta-features for stacking ensemble")
+        
+        df_meta = df.copy()
+        
+        # Identify which segment each record belongs to
+        try:
+            if len(df_meta) == 1:
+                # Single record prediction
+                df_meta['segment_id'] = self._get_segment_for_record(df_meta.iloc[0])
+            else:
+                # Batch prediction
+                df_meta['segment_id'] = df_meta.apply(self._get_segment_for_record, axis=1)
+        except Exception as e:
+            self._log(f"Error assigning segments: {str(e)}")
+            df_meta['segment_id'] = 'Other'
+        
+        numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+        if 'SettlementValue' in numeric_cols:
+            numeric_cols = [col for col in numeric_cols if col != 'SettlementValue']
+        
+        # Create prediction columns for each segment model
+        for segment_name, model_info in self.segment_models.items():
+            df_meta[f'pred_{segment_name}'] = np.nan
             
-            # Add the actual value
-            plt.axvline(x=record['SettlementValue'], color='blue', linestyle='-', 
-                        linewidth=2, label='Actual Value')
+            if model_info['model'] is None:
+                # Use mean value if model is None
+                segment_mask = df_meta['segment_id'] == segment_name
+                if any(segment_mask):
+                    df_meta.loc[segment_mask, f'pred_{segment_name}'] = model_info['mean_value']
+                continue
+                
+            segment_model = model_info['model']
+            segment_features = model_info['features']
             
-            plt.title(f"Record {idx}: Segment = {segment}")
-            plt.xlabel('Settlement Value Prediction ($)')
+            # Check if all required features are present
+            missing_features = [f for f in segment_features if f not in df_meta.columns]
+            if missing_features:
+                self._log(f"Warning: Missing features for segment {segment_name}: {missing_features}")
+                continue
             
-            # Only add legend to the first subplot
-            if i == 1:
-                plt.legend()
+            # Apply segment model to matching records
+            segment_mask = df_meta['segment_id'] == segment_name
+            
+            if any(segment_mask):
+                try:
+                    X_segment = df_meta.loc[segment_mask, segment_features]
+                    preds = segment_model.predict(X_segment)
+                    df_meta.loc[segment_mask, f'pred_{segment_name}'] = preds
+                except Exception as e:
+                    self._log(f"Error predicting for segment {segment_name}: {str(e)}")
+                    # Fallback to mean value
+                    df_meta.loc[segment_mask, f'pred_{segment_name}'] = model_info['mean_value']
+        
+        # Create aggregate meta-features
+        df_meta['primary_segment_pred'] = self.fallback_mean if self.fallback_mean is not None else 0
+        
+        if 'Total_Special_Damages' in df_meta.columns and 'Total_General_Damages' in df_meta.columns:
+            df_meta['total_damages_meta'] = df_meta['Total_Special_Damages'] + df_meta['Total_General_Damages']
+        
+        meta_features = [col for col in df_meta.columns if 'pred_' in col or 'meta' in col or 
+                        col in ['Total_Special_Damages', 'Total_General_Damages']]
+        
+        if not meta_features:
+            self._log("Warning: No meta-features created, using numeric columns")
+            meta_features = numeric_cols
+        
+        final_features = [col for col in meta_features if col in df_meta.columns]
+        
+        # Prepare return value and handle missing columns
+        meta_df = df_meta[final_features].copy()
+        meta_df = meta_df.fillna(0)
+        
+        return meta_df
+    
+    def _build_meta_model(self, X_meta, y):
+        """Build the meta-model that combines segment predictions"""
+        self._log("Building meta-model")
+        
+        try:
+            base_models = [
+                ('xgb', XGBRegressor(learning_rate=0.05, max_depth=4, n_estimators=150, random_state=42)),
+                ('gbm', GradientBoostingRegressor(learning_rate=0.05, max_depth=4, n_estimators=150, random_state=42)),
+                ('rf', RandomForestRegressor(n_estimators=150, max_depth=8, random_state=42))
+            ]
+            
+            final_estimator = ElasticNet(alpha=0.001, l1_ratio=0.5, random_state=42)
+            
+            stacking_regressor = StackingRegressor(
+                estimators=base_models,
+                final_estimator=final_estimator,
+                cv=5,
+                n_jobs=-1
+            )
+            
+            # Convert to numpy arrays to avoid pandas-related serialization issues
+            X_meta_np = X_meta.to_numpy()
+            y_np = y.to_numpy()
+            
+            stacking_regressor.fit(X_meta_np, y_np)
+            
+            y_pred = stacking_regressor.predict(X_meta_np)
+            rmse = np.sqrt(mean_squared_error(y_np, y_pred))
+            r2 = r2_score(y_np, y_pred)
+            
+            self._log(f"Meta-model performance - RMSE: {rmse:.2f}, R²: {r2:.4f}")
+            
+            return stacking_regressor, list(X_meta.columns)
         
         except Exception as e:
-            plt.text(0.5, 0.5, f"Error analyzing record: {str(e)}", 
-                     ha='center', va='center', transform=plt.gca().transAxes)
+            self._log(f"Error building meta-model: {str(e)}")
+            # Return a simple XGBoost model as fallback
+            fallback_model = XGBRegressor(random_state=42)
+            fallback_model.fit(X_meta.to_numpy(), y.to_numpy())
+            return fallback_model, list(X_meta.columns)
     
-    plt.tight_layout()
-    plt.savefig('model_visualizations/meta_model_contribution.png', dpi=300)
-    plt.close()
+    def fit(self, df):
+        """Train the unified segmented model"""
+        start_time = time.time()
+        self._log("Training unified segmented model")
+        
+        # Make sure we're working with a copy
+        df = df.copy()
+        
+        # Preprocess and engineer features
+        df = self._preprocess_data(df)
+        df = self._engineer_features(df)
+        
+        # Store feature columns for later verification
+        self.feature_columns = df.columns.tolist()
+        
+        # Create segments
+        self.segments = self._create_segments(df)
+        
+        # Train segment models
+        self.segment_models = {}
+        for segment_name, segment_df in self.segments.items():
+            self.segment_models[segment_name] = self._train_segment_model(segment_df, segment_name)
+        
+        # Create meta-features and train meta-model
+        meta_features = self._create_meta_features(df)
+        self.meta_model, self.meta_features = self._build_meta_model(meta_features, df['SettlementValue'])
+        
+        self.is_trained = True
+        
+        end_time = time.time()
+        training_time = end_time - start_time
+        self._log(f"Training completed in {training_time:.2f} seconds")
+        
+        return self
     
-    print("Meta-model contribution visualization saved.")
+    def predict(self, df):
+        """Make predictions using the trained model"""
+        if not self.is_trained:
+            raise ValueError("Model has not been trained yet. Call fit() first.")
+        
+        # Support for single-row DataFrame or Series input
+        if isinstance(df, pd.Series):
+            df = pd.DataFrame([df])
+        
+        # Handle a single dictionary input
+        if isinstance(df, dict):
+            df = pd.DataFrame([df])
+        
+        original_indices = df.index.copy()
+        
+        try:
+            # Preprocess and engineer features
+            df = self._preprocess_data(df)
+            df = self._engineer_features(df)
+            
+            # Create meta-features
+            meta_features = self._create_meta_features(df)
+            
+            # Ensure all required meta-features are present
+            for feature in self.meta_features:
+                if feature not in meta_features.columns:
+                    meta_features[feature] = 0
+            
+            # Keep only the features the meta-model knows about
+            meta_features = meta_features[self.meta_features]
+            
+            # Convert to numpy array for prediction
+            X_meta_np = meta_features.to_numpy()
+            
+            # Make predictions
+            predictions = self.meta_model.predict(X_meta_np)
+            
+            self._log(f"Made predictions for {len(predictions)} records")
+            
+            # Make sure predictions are positive
+            predictions = np.maximum(predictions, 0)
+            
+            return predictions
+            
+        except Exception as e:
+            self._log(f"Error during prediction: {str(e)}")
+            import traceback
+            self._log(traceback.format_exc())
+            
+            # Return fallback prediction
+            if self.fallback_mean is not None:
+                return np.array([self.fallback_mean] * len(df))
+            else:
+                return np.array([0] * len(df))
+    
+    def predict_single(self, record):
+        """Make a prediction for a single record"""
+        if isinstance(record, dict):
+            # Convert dictionary to DataFrame
+            df = pd.DataFrame([record])
+        elif isinstance(record, pd.Series):
+            # Convert Series to DataFrame
+            df = pd.DataFrame([record])
+        else:
+            raise ValueError("Input must be a dictionary or pandas Series")
+        
+        # Use the batch prediction method
+        predictions = self.predict(df)
+        
+        # Return the single prediction
+        return predictions[0]
+    
+    def score(self, df):
+        """Calculate R² score on a test dataset"""
+        if 'SettlementValue' not in df.columns:
+            raise ValueError("Target 'SettlementValue' not found in data")
+        
+        df_copy = df.copy()
+        
+        try:
+            # Make predictions
+            y_pred = self.predict(df_copy)
+            
+            # Handle length mismatch (shouldn't happen with fixed code)
+            if len(y_pred) != len(df_copy):
+                self._log(f"Warning: Predictions were made for {len(y_pred)} out of {len(df_copy)} records")
+                df_copy = df_copy.iloc[:len(y_pred)]
+            
+            # Get true values
+            y_true = df_copy['SettlementValue']
+            
+            # Calculate and return R² score
+            return r2_score(y_true, y_pred)
+            
+        except Exception as e:
+            self._log(f"Error during scoring: {str(e)}")
+            return float('nan')
+    
+    def save(self, filepath):
+        """Save the model to disk"""
+        if not self.is_trained:
+            raise ValueError("Model has not been trained yet. Call fit() first.")
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
+        
+        # Reset verbosity to avoid large log outputs when loading
+        temp_verbose = self.verbose
+        self.verbose = False
+        
+        try:
+            joblib.dump(self, filepath)
+            self._log(f"Model saved to {filepath}")
+        except Exception as e:
+            self._log(f"Error saving model: {str(e)}")
+            raise
+        finally:
+            # Restore verbosity
+            self.verbose = temp_verbose
+    
+    @classmethod
+    def load(cls, filepath):
+        """Load a model from disk"""
+        try:
+            model = joblib.load(filepath)
+            if isinstance(model, cls):
+                print(f"Model loaded from {filepath}")
+                return model
+            else:
+                raise TypeError(f"Loaded object is not a {cls.__name__}")
+        except Exception as e:
+            print(f"Error loading model: {str(e)}")
+            raise
 
-def main():
-    """Main function"""
-    print("=== Generating Enhanced Model Visualizations ===")
-    
-    # Load model and data
-    model, data = load_model_and_data()
-    if model is None or data is None:
-        print("Failed to load model or data. Exiting.")
-        return
-    
-    # Visualize model architecture
-    visualize_model_architecture(model)
-    
-    # Visualize segment distribution
-    data_with_segments = visualize_segment_distribution(model, data)
-    
-    # Visualize feature importance by segment
-    visualize_feature_importance_by_segment(model)
-    
-    # Visualize error analysis
-    test_data_with_errors, segment_metrics = visualize_error_analysis(model, data)
-    
-    # Visualize meta-model contribution
-    if test_data_with_errors is not None:
-        visualize_meta_model_contribution(model, test_data_with_errors)
-    
-    print("\n=== Model Visualization Complete ===")
-    print(f"Visualizations saved to 'model_visualizations/' directory")
-
+# Example usage
 if __name__ == "__main__":
-    main()
+    # Create output directory
+    os.makedirs('output', exist_ok=True)
+    
+    # Load data
+    df = pd.read_csv('Synthetic_Data_For_Students.csv')
+    
+    # Split into train and test
+    train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
+    
+    # Create and train model
+    model = UnifiedSegmentedModel(
+        segmentation_cols=['Exceptional_Circumstances', 'AccidentType'],
+        min_segment_size=50,
+        use_feature_selection=True,
+        verbose=True
+    )
+    
+    model.fit(train_df)
+    
+    # Evaluate model
+    r2 = model.score(test_df)
+    print(f"Test R² score: {r2:.4f}")
+    
+    # Save model
+    model.save('output/unified_segmented_model.pkl')
+    
+    # Test single prediction
+    single_record = test_df.iloc[0]
+    prediction = model.predict_single(single_record)
+    print(f"Prediction for single record: {prediction:.2f}")
+    print(f"Actual value: {single_record['SettlementValue']:.2f}")
+    
+    # Test loading model
+    loaded_model = UnifiedSegmentedModel.load('output/unified_segmented_model.pkl')
+    loaded_prediction = loaded_model.predict_single(single_record)
+    print(f"Prediction from loaded model: {loaded_prediction:.2f}")
