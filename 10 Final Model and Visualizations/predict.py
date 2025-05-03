@@ -36,6 +36,7 @@ class ModelExplainer:
     def _log(self, message):
         """Simple logging function to print messages"""
         print(message)   
+
     def predict_and_explain(self, record, output_dir='model_explanation'):
         """
         Make a prediction for a single record and generate explanations
@@ -55,27 +56,36 @@ class ModelExplainer:
             record = pd.DataFrame([record])
             
         # Get the prediction
-        prediction = self.model.predict(record)[0]
+        try:
+            prediction = self.model.predict(record)[0]
+            self._log(f"Prediction: ${prediction:.2f}")
+        except Exception as e:
+            self._log(f"Error during prediction: {str(e)}")
+            traceback.print_exc()
+            prediction = 0
         
         # Preprocess the record as the model would
         processed_record = self._preprocess_record(record)
         
         # Determine which segment was used
         segment_id = self._get_segment_id(processed_record.iloc[0])
+        self._log(f"Record assigned to segment: {segment_id}")
         
         # Get segment-specific prediction
         segment_prediction = self._get_segment_prediction(processed_record, segment_id)
+        self._log(f"Segment-specific prediction: ${segment_prediction if segment_prediction is not None else 'None'}")
         
         # Generate standard visualizations
         self._log("Generating standard visualizations...")
-        self._visualize_segment_details(processed_record, segment_id, prediction, segment_prediction, output_dir)
+        try:
+            self._visualize_segment_details(processed_record, segment_id, prediction, segment_prediction, output_dir)
+            self._log("Created segment details visualization")
+        except Exception as e:
+            self._log(f"Error creating segment details visualization: {str(e)}")
+            traceback.print_exc()
         
-        # Generate new advanced visualizations
+        # Generate advanced visualizations
         self._log("Generating advanced visualizations...")
-        
-        # Import json for decision path visualization
-        import json
-        import traceback
         
         # Feature contribution waterfall chart
         try:
@@ -83,6 +93,7 @@ class ModelExplainer:
             self._log("Created feature contribution waterfall chart")
         except Exception as e:
             self._log(f"Error creating feature contribution waterfall: {str(e)}")
+            traceback.print_exc()
         
         # Decision path visualization
         try:
@@ -90,6 +101,7 @@ class ModelExplainer:
             self._log("Created decision path visualization")
         except Exception as e:
             self._log(f"Error creating decision path visualization: {str(e)}")
+            traceback.print_exc()
         
         # Similar cases comparison
         try:
@@ -97,6 +109,7 @@ class ModelExplainer:
             self._log("Created similar cases comparison")
         except Exception as e:
             self._log(f"Error creating similar cases comparison: {str(e)}")
+            traceback.print_exc()
         
         # Sensitivity analysis
         try:
@@ -104,8 +117,7 @@ class ModelExplainer:
             self._log("Created sensitivity analysis")
         except Exception as e:
             self._log(f"Error creating sensitivity analysis: {str(e)}")
-        
-        
+            traceback.print_exc()
         
         # Ensemble weights visualization
         try:
@@ -113,6 +125,7 @@ class ModelExplainer:
             self._log("Created ensemble weights visualization")
         except Exception as e:
             self._log(f"Error creating ensemble weights visualization: {str(e)}")
+            traceback.print_exc()
         
         # Create text summary
         self._create_prediction_summary(record, processed_record, prediction, segment_id, segment_prediction, output_dir)
@@ -458,104 +471,170 @@ class ModelExplainer:
     def _visualize_feature_contributions(self, record, segment_id, prediction, output_dir):
         """
         Create a waterfall chart showing how individual features contribute to the prediction
+        with improved error handling and visualization
         """
-        if segment_id in self.model.segment_models:
-            segment_model = self.model.segment_models[segment_id]['model']
-            segment_features = self.model.segment_models[segment_id]['features']
-            
-            # Only works for tree-based models like XGBoost
-            if hasattr(segment_model, 'feature_importances_'):
-                # Get importance and sort features
-                importances = segment_model.feature_importances_
-                indices = np.argsort(importances)[-10:]  # Top 10 features
-                top_features = [segment_features[i] for i in indices]
-                top_importances = importances[indices]
+        self._log("Starting feature contribution visualization...")
+        
+        try:
+            if segment_id in self.model.segment_models:
+                segment_model = self.model.segment_models[segment_id]['model']
+                segment_features = self.model.segment_models[segment_id]['features']
                 
-                # Calculate contribution based on importance weight and feature value
-                contributions = []
-                feature_values = []
-                
-                # Baseline is the average prediction for this segment
-                if segment_id in self.model.segments:
-                    baseline = self.model.segments[segment_id]['SettlementValue'].mean()
+                # Only works for tree-based models like XGBoost
+                if hasattr(segment_model, 'feature_importances_'):
+                    # Get importance and sort features
+                    importances = segment_model.feature_importances_
+                    indices = np.argsort(importances)[-10:]  # Top 10 features
+                    top_features = [segment_features[i] for i in indices]
+                    top_importances = importances[indices]
+                    
+                    # Filter to only include features that actually have some importance
+                    significant_indices = [i for i, imp in enumerate(top_importances) if imp > 0.01]
+                    if not significant_indices:
+                        # If no significant features, use all features
+                        significant_indices = list(range(len(top_importances)))
+                    
+                    top_features = [top_features[i] for i in significant_indices]
+                    top_importances = top_importances[significant_indices]
+                    
+                    # Calculate contribution based on importance weight and feature value
+                    contributions = []
+                    feature_values = []
+                    
+                    # Baseline is the average prediction for this segment
+                    if segment_id in self.model.segments and 'SettlementValue' in self.model.segments[segment_id].columns:
+                        baseline = self.model.segments[segment_id]['SettlementValue'].mean()
+                    else:
+                        baseline = self.model.fallback_mean if self.model.fallback_mean is not None else 0
+                    
+                    # Scale importances to match difference between prediction and baseline
+                    total_importance = sum(top_importances)
+                    if total_importance > 0:
+                        scaling_factor = (prediction - baseline) / total_importance
+                    else:
+                        scaling_factor = 0
+                        self._log("Warning: Total feature importance is zero")
+                    
+                    for feature, importance in zip(top_features, top_importances):
+                        if feature in record.columns:
+                            value = record[feature].iloc[0]
+                            if isinstance(value, (int, float)):
+                                value_text = f"{value:.2f}" if isinstance(value, float) else f"{value}"
+                            else:
+                                value_text = str(value)
+                            
+                            # Calculate contribution (scaled importance)
+                            contribution = importance * scaling_factor
+                            
+                            contributions.append(contribution)
+                            feature_values.append((feature, value_text, contribution))
+                    
+                    # Sort by absolute contribution
+                    feature_values.sort(key=lambda x: abs(x[2]), reverse=True)
+                    
+                    # Create the waterfall chart
+                    plt.figure(figsize=(12, 8))
+                    
+                    # Starting point is baseline
+                    running_total = baseline
+                    x_labels = ["Baseline"]
+                    y_values = [running_total]
+                    
+                    # Add each feature's contribution
+                    for feature, value, contribution in feature_values:
+                        x_labels.append(f"{feature}\n({value})")
+                        running_total += contribution
+                        y_values.append(running_total)
+                    
+                    # Add final prediction
+                    x_labels.append("Final Prediction")
+                    y_values.append(prediction)
+                    
+                    # Create the plot with connecting lines
+                    plt.plot(range(len(y_values)), y_values, 'o-', color='blue')
+                    
+                    # Add bars showing positive/negative contributions
+                    for i in range(1, len(feature_values) + 1):
+                        feature, value, contribution = feature_values[i-1]
+                        color = 'green' if contribution > 0 else 'red'
+                        plt.bar(i, contribution, bottom=y_values[i] - contribution, color=color, alpha=0.4)
+                    
+                    # Set x-axis labels
+                    plt.xticks(range(len(x_labels)), x_labels, rotation=45, ha='right')
+                    
+                    # Add value labels above each point
+                    for i, y in enumerate(y_values):
+                        plt.text(i, y + max(y_values) * 0.01, f"${y:.2f}", ha='center')
+                    
+                    # Add a grid
+                    plt.grid(axis='y', linestyle='--', alpha=0.7)
+                    
+                    # Set labels and title
+                    plt.ylabel('Prediction Value ($)')
+                    plt.title('Feature Contribution to Final Prediction', fontsize=16, pad=20)
+                    
+                    # Set y-axis limits with some padding
+                    min_y = min(y_values) * 0.95
+                    max_y = max(y_values) * 1.05
+                    plt.ylim(min_y, max_y)
+                    
+                    # Add explanation
+                    explanation = (
+                        "This chart shows how each feature contributes to the final prediction.\n"
+                        "Green bars indicate features that increase the prediction value, while red bars decrease it.\n"
+                        "The baseline is the average settlement value for this segment."
+                    )
+                    plt.figtext(0.5, 0.01, explanation, ha='center', fontsize=12, bbox=dict(facecolor='#f0f0f0', alpha=0.6))
+                    
+                    # Adjust layout
+                    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+                    
+                    # Save figure
+                    plt.savefig(os.path.join(output_dir, 'feature_contributions.png'), dpi=150)
+                    plt.close()
+                    
+                    self._log("Feature contributions visualization completed")
                 else:
-                    baseline = self.model.fallback_mean if self.model.fallback_mean is not None else 0
+                    self._log("Model does not have feature_importances_ attribute")
+                    
+                    # Create a message image
+                    plt.figure(figsize=(10, 6))
+                    plt.text(0.5, 0.5, 
+                        "Feature contributions visualization not available for this model type.\n"
+                        "The model does not provide feature importance information.",
+                        ha='center', va='center', fontsize=14,
+                        bbox=dict(facecolor='#f0f0f0', alpha=0.8))
+                    plt.axis('off')
+                    plt.savefig(os.path.join(output_dir, 'feature_contributions.png'), dpi=150)
+                    plt.close()
+            else:
+                self._log(f"Segment {segment_id} not found in model.segment_models")
                 
-                # Scale importances to match difference between prediction and baseline
-                scaling_factor = (prediction - baseline) / sum(top_importances)
-                
-                for feature, importance in zip(top_features, top_importances):
-                    if feature in record.columns:
-                        value = record[feature].iloc[0]
-                        if isinstance(value, (int, float)):
-                            value_text = f"{value:.2f}" if isinstance(value, float) else f"{value}"
-                        else:
-                            value_text = str(value)
-                        
-                        # Calculate contribution (scaled importance)
-                        contribution = importance * scaling_factor
-                        
-                        contributions.append(contribution)
-                        feature_values.append((feature, value_text, contribution))
-                
-                # Sort by absolute contribution
-                feature_values.sort(key=lambda x: abs(x[2]), reverse=True)
-                
-                # Create the waterfall chart
-                plt.figure(figsize=(12, 8))
-                
-                # Starting point is baseline
-                running_total = baseline
-                x_labels = ["Baseline"]
-                y_values = [running_total]
-                
-                # Add each feature's contribution
-                for feature, value, contribution in feature_values:
-                    x_labels.append(f"{feature}\n({value})")
-                    running_total += contribution
-                    y_values.append(running_total)
-                
-                # Add final prediction
-                x_labels.append("Final Prediction")
-                y_values.append(prediction)
-                
-                # Create the plot with connecting lines
-                plt.plot(range(len(y_values)), y_values, 'o-', color='blue')
-                
-                # Add bars showing positive/negative contributions
-                for i in range(1, len(feature_values) + 1):
-                    feature, value, contribution = feature_values[i-1]
-                    color = 'green' if contribution > 0 else 'red'
-                    plt.bar(i, contribution, bottom=y_values[i] - contribution, color=color, alpha=0.4)
-                
-                # Set x-axis labels
-                plt.xticks(range(len(x_labels)), x_labels, rotation=45, ha='right')
-                
-                # Add value labels above each point
-                for i, y in enumerate(y_values):
-                    plt.text(i, y + max(y_values) * 0.01, f"${y:.2f}", ha='center')
-                
-                # Add a grid
-                plt.grid(axis='y', linestyle='--', alpha=0.7)
-                
-                # Set labels and title
-                plt.ylabel('Prediction Value ($)')
-                plt.title('Feature Contribution to Final Prediction', fontsize=16, pad=20)
-                
-                # Add explanation
-                explanation = (
-                    "This chart shows how each feature contributes to the final prediction.\n"
-                    "Green bars indicate features that increase the prediction value, while red bars decrease it.\n"
-                    "The baseline is the average settlement value for this segment."
-                )
-                plt.figtext(0.5, 0.01, explanation, ha='center', fontsize=12, bbox=dict(facecolor='#f0f0f0', alpha=0.6))
-                
-                # Adjust layout
-                plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-                
-                # Save figure
+                # Create a message image
+                plt.figure(figsize=(10, 6))
+                plt.text(0.5, 0.5, 
+                    f"Feature contributions visualization not available.\n"
+                    f"Segment '{segment_id}' not found in the model.",
+                    ha='center', va='center', fontsize=14,
+                    bbox=dict(facecolor='#f0f0f0', alpha=0.8))
+                plt.axis('off')
                 plt.savefig(os.path.join(output_dir, 'feature_contributions.png'), dpi=150)
                 plt.close()
+        
+        except Exception as e:
+            self._log(f"Error in feature contributions visualization: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Create an error message image
+            plt.figure(figsize=(10, 6))
+            plt.text(0.5, 0.5, 
+                f"Error creating feature contributions visualization:\n{str(e)}",
+                ha='center', va='center', fontsize=14,
+                bbox=dict(facecolor='red', alpha=0.2))
+            plt.axis('off')
+            plt.savefig(os.path.join(output_dir, 'feature_contributions.png'), dpi=150)
+            plt.close()
     def _visualize_decision_paths(self, record, segment_id, output_dir):
         """
         Visualize the decision path through the first few trees in the XGBoost model
@@ -890,62 +969,232 @@ class ModelExplainer:
     def _visualize_sensitivity_analysis(self, record, segment_id, prediction, output_dir):
         """
         Create a visualization showing how changing key input values affects the prediction
+        with improved feature selection that prioritizes features with actual impact
         """
+        self._log("Starting sensitivity analysis...")
+        
         if segment_id in self.model.segment_models:
             model_info = self.model.segment_models[segment_id]
             segment_model = model_info['model']
             segment_features = model_info['features']
             
-            # Only make a sensitivity analysis for models with feature importances
-            if hasattr(segment_model, 'feature_importances_'):
-                importances = segment_model.feature_importances_
-                
-                # Get the top 5 most important numeric features
-                indices = np.argsort(importances)[-10:]
-                top_features = [segment_features[i] for i in indices]
-                
-                # Filter to only include numeric features
-                numeric_features = []
-                for feature in top_features:
-                    if feature in record.columns:
-                        if pd.api.types.is_numeric_dtype(record[feature]):
-                            numeric_features.append(feature)
-                
-                # Limit to top 5 numeric features
-                numeric_features = numeric_features[:5]
-                
-                if numeric_features:
-                    # Create the figure for sensitivity analysis
-                    fig, axs = plt.subplots(len(numeric_features), 1, figsize=(12, 3 * len(numeric_features)))
-                    if len(numeric_features) == 1:
-                        axs = [axs]  # Ensure axs is iterable
-                    
-                    # For each feature, vary it and see how the prediction changes
-                    for i, feature in enumerate(numeric_features):
+            # Check if we have a valid model for this segment
+            if segment_model is None:
+                self._log(f"No model available for segment {segment_id}")
+                # Create a message image
+                plt.figure(figsize=(10, 6))
+                plt.text(0.5, 0.5, 
+                    f"Sensitivity analysis not available.\n"
+                    f"No trained model exists for segment '{segment_id}'.",
+                    ha='center', va='center', fontsize=14,
+                    bbox=dict(facecolor='#f0f0f0', alpha=0.8))
+                plt.axis('off')
+                plt.savefig(os.path.join(output_dir, 'sensitivity_analysis.png'), dpi=150)
+                plt.close()
+                return
+            
+            # NEW FEATURE SELECTION APPROACH: Test features to find those that actually affect prediction
+            self._log("Testing features for actual prediction impact...")
+            
+            # First identify categories of features for ensuring diversity
+            damage_features = []
+            injury_features = []
+            demographic_features = []
+            other_features = []
+            
+            # Test each feature for prediction sensitivity
+            candidate_features = []
+            for feature in segment_features:
+                if feature in record.columns and pd.api.types.is_numeric_dtype(record[feature]):
+                    try:
                         current_value = record[feature].iloc[0]
                         
-                        # Create a range of values to test
-                        # For each feature, create 11 values: current value plus 5 less and 5 more
-                        values_range = np.linspace(current_value * 0.5, current_value * 1.5, 11)
+                        # Skip extremely small values upfront unless it's a key feature
+                        if (current_value == 0 or abs(current_value) < 0.1) and not feature.startswith('Total_'):
+                            self._log(f"Skipping feature {feature} with small/zero value: {current_value}")
+                            continue
+                        
+                        # Create test values (significantly different from current)
+                        test_min = max(0.1, current_value * 0.5 if current_value != 0 else 100)
+                        test_max = current_value * 1.5 if current_value != 0 else 1000
+                        
+                        # Ensure meaningful difference between test values
+                        if abs(test_max - test_min) < 1.0:
+                            test_min = max(0, current_value - 100)
+                            test_max = current_value + 100
+                        
+                        test_values = [test_min, test_max]
+                        self._log(f"Testing feature {feature} with values: {test_values}")
+                        
+                        # Test prediction at each value
+                        predictions = []
+                        for test_value in test_values:
+                            test_record = record.copy()
+                            test_record[feature] = test_value
+                            processed_record = self._preprocess_record(test_record)
+                            pred = self._get_segment_prediction(processed_record, segment_id)
+                            if pred is not None:
+                                predictions.append(pred)
+                            else:
+                                # Try full model if segment prediction fails
+                                try:
+                                    pred = self.model.predict(test_record)[0]
+                                    predictions.append(pred)
+                                except:
+                                    # If all else fails, use original prediction
+                                    predictions.append(prediction)
+                        
+                        # Calculate variation and determine if feature has impact
+                        if len(predictions) == 2:
+                            variation = abs(predictions[1] - predictions[0])
+                            variation_pct = variation / prediction if prediction > 0 else 0
+                            
+                            # Feature is impactful if prediction varies by at least 0.5%
+                            if variation > 1.0 or variation_pct > 0.005:
+                                # Get importance if available
+                                importance = 0
+                                if hasattr(segment_model, 'feature_importances_') and feature in segment_features:
+                                    try:
+                                        idx = segment_features.index(feature)
+                                        importance = segment_model.feature_importances_[idx]
+                                    except:
+                                        pass  # Use default importance 0 if error
+                                
+                                # Calculate impact score - combination of variation and importance
+                                impact_score = variation_pct * 0.7 + importance * 0.3
+                                
+                                # Add to candidate list with category
+                                if "Damage" in feature:
+                                    damage_features.append((feature, importance, variation, impact_score))
+                                elif "Injury" in feature or "Recovery" in feature or "Whiplash" in feature:
+                                    injury_features.append((feature, importance, variation, impact_score))
+                                elif feature in ["Age", "Sex", "Employed", "Dependents"]:
+                                    demographic_features.append((feature, importance, variation, impact_score))
+                                else:
+                                    other_features.append((feature, importance, variation, impact_score))
+                                
+                                self._log(f"Feature {feature} has impact: {variation:.2f} (var), {importance:.4f} (imp), {impact_score:.4f} (score)")
+                            else:
+                                self._log(f"Feature {feature} has minimal impact: variation = {variation:.2f}")
+                        
+                    except Exception as e:
+                        self._log(f"Error testing feature {feature}: {str(e)}")
+                        continue
+            
+            # Select top features from each category to ensure diversity
+            def get_top_from_category(category, count=1):
+                if category:
+                    # Sort by impact score
+                    category.sort(key=lambda x: x[3], reverse=True)
+                    return category[:count]
+                return []
+            
+            # Select diverse set of features
+            selected_features = []
+            selected_features.extend(get_top_from_category(damage_features, 2))  # Up to 2 damage features
+            selected_features.extend(get_top_from_category(injury_features, 1))  # Up to 1 injury feature
+            selected_features.extend(get_top_from_category(demographic_features, 1))  # Up to 1 demographic feature
+            selected_features.extend(get_top_from_category(other_features, 1))  # Up to 1 other feature
+            
+            # If we don't have enough diverse features, add more from any category by impact score
+            all_candidates = damage_features + injury_features + demographic_features + other_features
+            all_candidates.sort(key=lambda x: x[3], reverse=True)
+            
+            # Add more features until we have 5 or run out of candidates
+            while len(selected_features) < 5 and len(all_candidates) > len(selected_features):
+                # Get next candidate not already in selected_features
+                for candidate in all_candidates:
+                    if candidate not in selected_features:
+                        selected_features.append(candidate)
+                        break
+                        
+            # Extract just the feature names for visualization
+            numeric_features = [f[0] for f in selected_features]
+            
+            self._log(f"Selected features for visualization: {numeric_features}")
+            
+            # Check if we have any features to visualize
+            if numeric_features:
+                # Create the figure for sensitivity analysis
+                fig, axs = plt.subplots(len(numeric_features), 1, figsize=(12, 3 * len(numeric_features)))
+                if len(numeric_features) == 1:
+                    axs = [axs]  # Ensure axs is iterable
+                
+                # For each feature, vary it and see how the prediction changes
+                for i, feature in enumerate(numeric_features):
+                    self._log(f"Creating visualization for feature: {feature}")
+                    
+                    try:
+                        current_value = record[feature].iloc[0]
+                        
+                        # Determine appropriate range for this feature
+                        if current_value == 0 or abs(current_value) < 0.1:
+                            # For zero/small values, use range from segment data or defaults
+                            if segment_id in self.model.segments and feature in self.model.segments[segment_id].columns:
+                                segment_data = self.model.segments[segment_id][feature]
+                                min_val = max(0, segment_data.quantile(0.1))  # 10th percentile
+                                max_val = segment_data.quantile(0.9)  # 90th percentile
+                                
+                                # Ensure range is meaningful
+                                if max_val - min_val < 1.0:
+                                    min_val = 0
+                                    max_val = max(1000, segment_data.max() * 1.2)
+                                    
+                                values_range = np.linspace(min_val, max_val, 11)
+                                self._log(f"  Using segment data range: {min_val} to {max_val}")
+                            else:
+                                # No segment data, use default range based on feature type
+                                if "Damage" in feature:
+                                    values_range = np.linspace(0, 10000, 11)  # Damage in dollars
+                                elif feature in ["Age"]:
+                                    values_range = np.linspace(18, 80, 11)  # Age in years
+                                elif feature in ["Recovery_Duration"]:
+                                    values_range = np.linspace(0, 365, 11)  # Recovery in days
+                                else:
+                                    values_range = np.linspace(0, 1000, 11)  # Generic range
+                                    
+                                self._log(f"  Using default range: {values_range[0]} to {values_range[-1]}")
+                        else:
+                            # For non-zero values, use range around current value
+                            min_val = max(0, current_value * 0.2)  # Wider range than before (20% to 200%)
+                            max_val = current_value * 2.0
+                            values_range = np.linspace(min_val, max_val, 11)
+                            self._log(f"  Using relative range: {min_val} to {max_val}")
                         
                         # Make predictions for each value
                         predictions = []
+                        
                         for value in values_range:
                             # Create a copy of the record and change just this feature
                             test_record = record.copy()
                             test_record[feature] = value
                             
-                            # Preprocess the test record
-                            processed_record = self._preprocess_record(test_record)
-                            
-                            # Get prediction from the segment model
-                            pred = self._get_segment_prediction(processed_record, segment_id)
-                            
-                            if pred is not None:
-                                predictions.append(pred)
-                            else:
-                                # If prediction fails, use the original prediction
+                            try:
+                                # Preprocess the test record
+                                processed_record = self._preprocess_record(test_record)
+                                
+                                # Get prediction from the segment model
+                                pred = self._get_segment_prediction(processed_record, segment_id)
+                                
+                                if pred is not None:
+                                    predictions.append(pred)
+                                else:
+                                    # If segment prediction fails, try the full model
+                                    self._log(f"  Segment prediction failed for {feature}={value}, trying full model")
+                                    try:
+                                        pred = self.model.predict(test_record)[0]
+                                        predictions.append(pred)
+                                    except:
+                                        # If all else fails, use the original prediction
+                                        self._log(f"  Full model prediction failed, using original prediction")
+                                        predictions.append(prediction)
+                            except Exception as e:
+                                self._log(f"  Error making prediction for {feature}={value}: {e}")
+                                # Use the original prediction as fallback
                                 predictions.append(prediction)
+                        
+                        # Check if predictions actually vary
+                        prediction_variation = max(predictions) - min(predictions)
                         
                         # Plot the sensitivity curve
                         axs[i].plot(values_range, predictions, '-o', color='#2196F3')
@@ -959,38 +1208,87 @@ class ModelExplainer:
                         axs[i].axhline(y=prediction, color='green', linestyle='--', 
                                     label=f'Original Prediction: ${prediction:.2f}')
                         
-                        # Add value annotations
+                        # Add value annotations (fewer for clarity)
                         for j, (x, y) in enumerate(zip(values_range, predictions)):
                             if j % 2 == 0:  # Label every other point for clarity
                                 axs[i].annotate(f'${y:.2f}', (x, y), textcoords="offset points", 
                                             xytext=(0,10), ha='center')
                         
+                        # Calculate percentage change for title
+                        max_change_pct = (max(predictions) - min(predictions)) / prediction * 100
+                        
                         # Set labels and title
                         axs[i].set_xlabel(f'{feature} Value')
                         axs[i].set_ylabel('Prediction ($)')
-                        axs[i].set_title(f'Sensitivity to {feature}', fontsize=14)
+                        axs[i].set_title(f'Sensitivity to {feature} (±{max_change_pct:.1f}% impact)', fontsize=14)
                         
                         # Add grid
                         axs[i].grid(True, linestyle='--', alpha=0.7)
                         
                         # Add legend
                         axs[i].legend(loc='upper left')
-                    
-                    # Overall title
-                    plt.suptitle('Sensitivity Analysis: How Feature Changes Affect Prediction', fontsize=16, fontweight='bold')
-                    
-                    # Add explanation
-                    explanation = (
-                        "This analysis shows how changing each feature affects the prediction.\n"
-                        "The current value is marked with a red dot, and the horizontal green line indicates the original prediction.\n"
-                        "The steeper the curve, the more sensitive the prediction is to changes in that feature."
-                    )
-                    plt.figtext(0.5, 0.01, explanation, ha='center', fontsize=12, 
-                            bbox=dict(facecolor='#f0f0f0', alpha=0.6))
-                    
-                    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
-                    plt.savefig(os.path.join(output_dir, 'sensitivity_analysis.png'), dpi=150)
-                    plt.close()
+                        
+                        # Set y-axis limits with some padding to better show variation
+                        if prediction_variation > 0.01:
+                            min_pred = min(predictions) - (prediction_variation * 0.1)
+                            max_pred = max(predictions) + (prediction_variation * 0.1)
+                            # Ensure we don't go below zero for dollar amounts
+                            min_pred = max(0, min_pred)
+                            axs[i].set_ylim(min_pred, max_pred)
+                        
+                    except Exception as e:
+                        self._log(f"Error processing feature {feature}: {str(e)}")
+                        traceback.print_exc()
+                        
+                        # Create an error message in the subplot
+                        axs[i].text(0.5, 0.5, f"Error analyzing {feature}:\n{str(e)}", 
+                                ha='center', va='center', transform=axs[i].transAxes,
+                                bbox=dict(facecolor='red', alpha=0.2))
+                
+                # Overall title
+                plt.suptitle('Sensitivity Analysis: How Feature Changes Affect Prediction', fontsize=16, fontweight='bold')
+                
+                # Add explanation
+                explanation = (
+                    "This analysis shows how changing each feature affects the prediction.\n"
+                    "The current value is marked with a red dot, and the horizontal green line indicates the original prediction.\n"
+                    "Features shown are those that have the most impact on the prediction for this specific case.\n"
+                    "The steeper the curve, the more sensitive the prediction is to changes in that feature."
+                )
+                plt.figtext(0.5, 0.01, explanation, ha='center', fontsize=12, 
+                        bbox=dict(facecolor='#f0f0f0', alpha=0.6))
+                
+                plt.tight_layout(rect=[0, 0.05, 1, 0.96])
+                plt.savefig(os.path.join(output_dir, 'sensitivity_analysis.png'), dpi=150)
+                plt.close()
+                
+                self._log("Sensitivity analysis completed")
+            else:
+                self._log("No features found that significantly affect the prediction")
+                
+                # Create a message image instead of an empty plot
+                plt.figure(figsize=(10, 6))
+                plt.text(0.5, 0.5, 
+                    "No features were found that significantly affect the prediction.\n"
+                    "This can happen when the model relies primarily on categorical features\n"
+                    "or when the current values are at optimal prediction points.",
+                    ha='center', va='center', fontsize=14,
+                    bbox=dict(facecolor='#f0f0f0', alpha=0.8))
+                plt.axis('off')
+                plt.savefig(os.path.join(output_dir, 'sensitivity_analysis.png'), dpi=150)
+                plt.close()
+        else:
+            self._log(f"Segment {segment_id} not found in model.segment_models")
+            # Create a message image
+            plt.figure(figsize=(10, 6))
+            plt.text(0.5, 0.5, 
+                f"Sensitivity analysis not available.\n"
+                f"Segment '{segment_id}' not found in the model.",
+                ha='center', va='center', fontsize=14,
+                bbox=dict(facecolor='#f0f0f0', alpha=0.8))
+            plt.axis('off')
+            plt.savefig(os.path.join(output_dir, 'sensitivity_analysis.png'), dpi=150)
+            plt.close()
     
     def _visualize_ensemble_weights(self, record, segment_id, output_dir):
         """
@@ -1132,7 +1430,7 @@ def load_sample_record():
     """Load a sample record from the training data"""
     try:
         df = pd.read_csv('Synthetic_Data_For_Students.csv')
-        return df.iloc[[30]]  # Use the first row as sample
+        return df.iloc[[58]]  
     except FileNotFoundError:
         print("Error: Could not find Synthetic_Data_For_Students.csv")
         print("Creating a synthetic record instead")
